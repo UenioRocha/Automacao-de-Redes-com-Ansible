@@ -1,0 +1,151 @@
+---
+- name: Configuracao do Roteador Cisco 
+  hosts: R1
+  gather_facts: false
+  connection: local
+
+  tasks:
+  - name: Configura interface G2/0
+    ios_config:
+      lines:
+        - description interface lan
+        - ip address 10.0.21.254 255.255.255.0
+      parents: interface Giga2/0
+
+  - name: Ativa a interface G2/0
+    ios_interface:
+    name: GigabitEthernet2/0
+    enabled: true
+    state: up
+
+  - name: Habilita o ospf
+    ios_config:
+      authorize: yes
+      parents: router ospf 1
+      lines:
+        - network 10.0.21.0 0.0.0.255 area 0
+        - network 192.168.0.0 0.0.0.255 area 0
+    register: print_output
+  - debug: var=print_output
+    
+- name: Configuracao do Roteador HP 
+  hosts: R2
+  gather_facts: false
+  connection: local
+ 
+  tasks:
+  - name: Configura interface G2/0
+    eos_config:
+      lines:
+        - description interface lan
+        - ip address 10.0.22.254 255.255.255.0
+        
+      parents: interface Giga2/0
+
+  - name: Ativa a interface G2/0
+    eos_interface:
+      name: GigabitEthernet2/0
+      enabled: true
+      state: up
+
+  - name: Habilita o ospf
+    eos_config:
+      authorize: yes
+      parents: ospf
+      lines:
+        - area 0
+        - network 10.0.22.0 0.0.0.255 area 0
+        - network 192.168.0.0 0.0.0.255 area 0
+        - silent-interface g2/0
+    register: print_output
+  - debug: var=print_output
+       
+- name: Configuracao Roteador Mikrotik
+  hosts: R3
+  gather_facts: raw
+  connection: paramiko
+
+  tasks:
+    - name: Configura hostname
+      raw: system identity set name=R3
+    - name: Configura interface
+      raw: ip address add address=10.0.23.254/24 interface=ether2
+    - name: Configura protocolo OSPF
+      raw: routing ospf instance add name=default
+    - name: OSPF interface ether1
+      raw: routing ospf network add network=192.168.0.0/24 area=backbone
+    - name: OSPF interface ether2
+      raw: routing ospf network add network=10.0.23.0/24 area=backbone
+    
+      register: print_output
+    - debug: var=print_output  
+        
+- name: Configuracao Roteador JunOS
+  hosts: R4
+  gather_facts: false
+  connection: local
+   
+  tasks:
+  - name: Configuracao JunOS
+    ios_config:
+      lines:
+        - configure
+        - set interfaces em1 unit 0 family inet address 10.0.24.254/24
+        - set protocols ospf area 0.0.0.0 interface em0
+        - set protocols ospf area 0.0.0.0 interface em1 passive
+        - commit
+        
+    register: print_output
+  - debug: var=print_output
+    
+- name: Configuracao Switch Cisco
+  hosts: S1, S4
+  gather_facts: false
+  connection: local
+      
+  tasks:
+  - name: Criando VLANs
+    ios_config:
+      authorize: yes
+      lines:
+        - vlan 2-20
+    register: print_output
+  - debug: var=print_output
+    
+- name: Configura Switch HP
+  hosts: S2
+  gather_facts: false
+  connection: local
+    
+  - name: Cria Vlan
+      eos_vlan:
+        vlan_id: 2
+        name: vlan-2
+        state: present
+    
+    tasks:
+    - name: Add interfaces a vlan
+      eos_vlan:
+        vlan_id: 2
+        state: present
+        interfaces:
+          - GibabitEthernet4/0
+                    
+      register: print_output
+    - debug: var=print_output
+
+- name: Configuracao Switch Mikrotik
+  hosts: S3
+  gather_facts: raw
+  connection: paramiko
+    
+  tasks:
+    - name: Configura hostname
+      raw: system identity set name=SW3
+    - name: Configura Vlan
+      raw: interface vlan add name=VLAN2 vlan-id=2 interface=ether1
+    - name: Add interface Vlan
+      raw: interface vlan add name=VLAN3 vlan-id=3 interface=ether1
+        
+      register: print_output
+    - debug: var=print_output
